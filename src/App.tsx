@@ -57,6 +57,9 @@ import OrgChartView from './components/OrgChartView';
 import TaskBoard from './components/TaskBoard';
 import ForecastView from './components/ForecastView';
 import EmploymentReportView from './components/EmploymentReportView';
+import UnassignedReportView from './components/UnassignedReportView';
+import ContingentReportView from './components/ContingentReportView';
+import UpcomingDemandReportView from './components/UpcomingDemandReportView';
 import SettingsView from './components/SettingsView';
 import AddResourceModal from './components/AddResourceModal';
 import AddProjectModal from './components/AddProjectModal';
@@ -134,6 +137,7 @@ export default function App() {
   }, [todos]);
   
   const [showAddResource, setShowAddResource] = useState(false);
+  const [addResourceDefaultProjectId, setAddResourceDefaultProjectId] = useState<string | undefined>(undefined);
   const [showAddProject, setShowAddProject] = useState(false);
   const [showAddTeam, setShowAddTeam] = useState(false);
   
@@ -182,14 +186,44 @@ export default function App() {
     assignments?: Assignment[];
     comments?: Comment[];
     todos?: Todo[];
+    user?: { name: string; role: string; avatar: string };
   }) => {
     if (data.teams) setTeams(data.teams);
     if (data.projectGroups) setProjectGroups(data.projectGroups);
     if (data.teamMembers) setTeamMembers(data.teamMembers);
-    if (data.projects) setProjects(data.projects);
-    if (data.assignments) setAssignments(data.assignments);
+
+    // When importing projects and assignments, ensure allocations to upcoming projects
+    // are converted to tentative statuses (Soft or Planned).
+    const incomingProjects = data.projects ?? undefined;
+    if (incomingProjects) setProjects(incomingProjects);
+
+    if (data.assignments) {
+      // Build set of upcoming project ids from incoming projects if provided, otherwise from current state
+      const upcomingProjectIds = new Set<string>((incomingProjects || projects).filter(p => p.upcoming).map(p => p.id));
+
+      const adjustedAssignments = data.assignments.map(a => {
+        if (upcomingProjectIds.has(a.projectId)) {
+          // Convert hard allocations to soft, others to planned
+          const newStatus: Assignment['status'] = a.status === 'Hard' ? 'Soft' : 'Planned';
+          return { ...a, status: newStatus, lastUpdated: a.lastUpdated || new Date().toISOString() };
+        }
+        return { ...a, lastUpdated: a.lastUpdated || new Date().toISOString() };
+      });
+      setAssignments(adjustedAssignments);
+    }
+
+    if (data.projects && !data.assignments) {
+      // Projects provided but no assignments; just ensure projects set above
+      // assignments will remain as-is
+    }
+
+    if (data.projects === undefined && data.assignments === undefined) {
+      // fallback: if neither projects nor assignments provided, leave existing values unchanged
+    }
+
     if (data.comments) setComments(data.comments);
     if (data.todos) setTodos(data.todos);
+    if (data.user) setUser(data.user);
   };
 
   const handleResetToDefault = () => {
@@ -232,12 +266,24 @@ export default function App() {
   const handleAddSingleResource = (member: TeamMember, initialAssignment?: Assignment) => {
     setTeamMembers(prev => [...prev, member]);
     if (initialAssignment) {
-      setAssignments(prev => [...prev, initialAssignment]);
+      setAssignments(prev => [...prev, {
+        ...initialAssignment,
+        status: member.isPlaceholder || member.isFutureJoiner ? 'Planned' : initialAssignment.status,
+        lastUpdated: initialAssignment.lastUpdated || new Date().toISOString()
+      }]);
     }
     setShowAddResource(false);
   };
 
-  const handleAddBulkResource = (resources: any[]) => {
+  const handleAddBulkResource = (resources: any[], options: {
+    assignProject: boolean;
+    projectId: string;
+    startDate: string;
+    endDate: string;
+    hoursPerWeek: number;
+    isPlaceholder: boolean;
+    isFutureJoiner: boolean;
+  }) => {
     const defaultTeamId = teams.length > 0 ? teams[0].id : '';
     const newMembers: TeamMember[] = resources.map((res, idx) => {
       let avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(res.name)}`;
@@ -256,10 +302,29 @@ export default function App() {
         teamId: defaultTeamId,
         companyStartDate: undefined,
         employmentType: res.employmentType,
+        isPlaceholder: options.isPlaceholder,
+        isFutureJoiner: options.isFutureJoiner,
         avatar
       };
     });
+
     setTeamMembers(prev => [...prev, ...newMembers]);
+
+    if (options.assignProject) {
+      const now = new Date().toISOString();
+      const assignmentsToAdd: Assignment[] = newMembers.map(member => ({
+        id: `a-${Date.now()}-${member.id}`,
+        memberId: member.id,
+        projectId: options.projectId,
+        startDate: options.startDate,
+        endDate: options.endDate,
+        hoursPerWeek: options.hoursPerWeek,
+        status: options.isPlaceholder || options.isFutureJoiner ? 'Planned' : 'Hard',
+        lastUpdated: now
+      }));
+      setAssignments(prev => [...prev, ...assignmentsToAdd]);
+    }
+
     setShowAddResource(false);
   };
 
@@ -354,6 +419,15 @@ export default function App() {
 
     if (isDuplicate) return;
  
+    let finalStatus = status;
+    const targetProject = projects.find(p => p.id === projectId);
+    const member = teamMembers.find(m => m.id === memberId);
+    if (member?.isPlaceholder || member?.isFutureJoiner) {
+      finalStatus = 'Planned';
+    } else if (targetProject?.upcoming) {
+      finalStatus = status === 'Hard' ? 'Soft' : 'Planned';
+    }
+
     const newAssignment: Assignment = {
       id: `a-${Date.now()}`,
       memberId,
@@ -361,17 +435,66 @@ export default function App() {
       hoursPerWeek: hours,
       startDate: sDate,
       endDate: eDate,
-      status
+      status: finalStatus,
+      lastUpdated: new Date().toISOString()
     };
     setAssignments(prev => [...prev, newAssignment]);
   };
 
   const handleEditAssignment = (id: string, updates: Partial<Assignment>) => {
-    setAssignments(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+    setAssignments(prev => prev.map(a => {
+      if (a.id !== id) return a;
+      const memberIdToCheck = updates.memberId ?? a.memberId;
+      const member = teamMembers.find(m => m.id === memberIdToCheck);
+      const forcedStatus = member?.isPlaceholder || member?.isFutureJoiner ? 'Planned' : updates.status ?? a.status;
+      return { ...a, ...updates, status: forcedStatus, lastUpdated: new Date().toISOString() };
+    }));
+  };
+
+  const handleSwapAssignmentMember = (assignmentId: string, newMemberId: string) => {
+    handleEditAssignment(assignmentId, { memberId: newMemberId });
+  };
+
+  const handleUnassignAssignment = (assignmentId: string) => {
+    handleRemoveAssignmentEntirely(assignmentId);
+  };
+
+  const handleSwapAssignmentToNewJoiner = (assignmentId: string) => {
+    const assignment = assignments.find(a => a.id === assignmentId);
+    if (!assignment) return;
+
+    const defaultTeamId = teams.length > 0 ? teams[0].id : '';
+    const newMember: TeamMember = {
+      id: `m-${Date.now()}`,
+      name: 'New Joiner',
+      role: 'Future Joiner',
+      skills: [],
+      teamId: defaultTeamId,
+      companyStartDate: undefined,
+      capacity: 40,
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Date.now()}`,
+      employmentType: 'employee',
+      isFutureJoiner: true
+    };
+
+    setTeamMembers(prev => [...prev, newMember]);
+    setAssignments(prev => prev.map(a => a.id === assignmentId ? {
+      ...a,
+      memberId: newMember.id,
+      status: 'Planned',
+      lastUpdated: new Date().toISOString()
+    } : a));
   };
 
   const handleBulkUpdateAssignments = (ids: string[], updates: Partial<Assignment>) => {
-    setAssignments(prev => prev.map(a => ids.includes(a.id) ? { ...a, ...updates } : a));
+    const now = new Date().toISOString();
+    setAssignments(prev => prev.map(a => {
+      if (!ids.includes(a.id)) return a;
+      const memberIdToCheck = updates.memberId ?? a.memberId;
+      const member = teamMembers.find(m => m.id === memberIdToCheck);
+      const forcedStatus = member?.isPlaceholder || member?.isFutureJoiner ? 'Planned' : updates.status ?? a.status;
+      return { ...a, ...updates, status: forcedStatus, lastUpdated: now };
+    }));
   };
 
   const handleUpdateMember = (id: string, updates: Partial<TeamMember>) => {
@@ -601,6 +724,9 @@ export default function App() {
                   onAddAssignment={handleAddAssignment}
                   onEditAssignment={handleEditAssignment}
                   onRemoveAssignmentEntirely={handleRemoveAssignmentEntirely}
+                  onSwapAssignmentMember={handleSwapAssignmentMember}
+                  onUnassignAssignment={handleUnassignAssignment}
+                  onSwapAssignmentToNewJoiner={handleSwapAssignmentToNewJoiner}
                   onAddProject={() => setShowAddProject(true)}
                   selectedTeamId={selectedTeamId}
                   teams={teams}
@@ -673,7 +799,14 @@ export default function App() {
                   onBulkUpdateAssignments={handleBulkUpdateAssignments}
                   onDeleteAssignment={handleDeleteAssignment}
                   onRemoveAssignmentEntirely={handleRemoveAssignmentEntirely}
+                  onSwapAssignmentMember={handleSwapAssignmentMember}
+                  onUnassignAssignment={handleUnassignAssignment}
+                  onSwapAssignmentToNewJoiner={handleSwapAssignmentToNewJoiner}
                   onAddProject={() => setShowAddProject(true)}
+                  onOpenAddResourceModal={(projectId) => {
+                    setAddResourceDefaultProjectId(projectId);
+                    setShowAddResource(true);
+                  }}
                   onEditMember={(m) => setEditingResource(m)}
                   privacyMode={privacyMode}
                   searchQuery={searchQuery}
@@ -732,6 +865,69 @@ export default function App() {
                   members={finalFilteredMembers} 
                   assignments={filteredAssignmentsByTeam} 
                   onEditMember={(m) => setEditingResource(m)}
+                  privacyMode={privacyMode}
+                />
+              </motion.div>
+            )}
+
+            {currentView === 'Unassigned' && (
+              <motion.div
+                key="unassigned"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="h-full overflow-auto"
+              >
+                <UnassignedReportView 
+                  members={finalFilteredMembers}
+                  assignments={filteredAssignmentsByTeam}
+                  onEditMember={(m) => setEditingResource(m)}
+                  privacyMode={privacyMode}
+                />
+              </motion.div>
+            )}
+
+            {currentView === 'Contingent' && (
+              <motion.div
+                key="contingent"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="h-full overflow-auto"
+              >
+                <ContingentReportView 
+                  members={finalFilteredMembers}
+                  assignments={filteredAssignmentsByTeam}
+                  onEditMember={(m) => setEditingResource(m)}
+                  privacyMode={privacyMode}
+                />
+              </motion.div>
+            )}
+
+            {currentView === 'UpcomingDemand' && (
+              <motion.div
+                key="upcoming-demand"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="h-full overflow-auto"
+              >
+                <UpcomingDemandReportView
+                  members={finalFilteredMembers}
+                  projects={projects}
+                  assignments={filteredAssignmentsByTeam}
+                  comments={comments}
+                  onEditMember={(m) => setEditingResource(m)}
+                  onUpdateMember={handleUpdateMember}
+                  onUpdateProject={handleUpdateProject}
+                  onCreateProject={handleAddSingleProject}
+                  onAddAssignment={handleAddAssignment}
+                  onCreateMemberAssignment={handleAddSingleResource}
+                  onUpdateAssignment={handleEditAssignment}
+                  onAddComment={handleAddComment}
                   privacyMode={privacyMode}
                 />
               </motion.div>
@@ -813,6 +1009,7 @@ export default function App() {
                   assignments={assignments}
                   comments={comments}
                   todos={todos}
+                  user={user}
                   onImportAll={handleImportAll}
                   onResetToDefault={handleResetToDefault}
                   onClearAll={handleClearAll}
@@ -826,11 +1023,16 @@ export default function App() {
         <AnimatePresence>
           {showAddResource && (
             <AddResourceModal 
-              onClose={() => setShowAddResource(false)}
+              onClose={() => {
+                setShowAddResource(false);
+                setAddResourceDefaultProjectId(undefined);
+              }}
               onAddResource={handleAddSingleResource}
               onBulkAdd={handleAddBulkResource}
               teams={teams}
               teamMembers={teamMembers}
+              projects={projects}
+              defaultProjectId={addResourceDefaultProjectId}
             />
           )}
           {showAddProject && (
@@ -868,6 +1070,7 @@ export default function App() {
               onAddComment={handleAddComment}
               onAddTodo={handleAddTodo}
               projects={projects}
+                assignments={assignments}
               privacyMode={privacyMode}
             />
           )}

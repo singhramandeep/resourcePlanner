@@ -6,10 +6,10 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Check, Trash2, Plus, AlertCircle } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO, addWeeks } from 'date-fns';
 import { obfuscate } from '../lib/utils';
 
-import { AssignmentStatus, Project, Assignment } from '../types';
+import { AssignmentStatus, Project, Assignment, TeamMember } from '../types';
 
 interface AllocationBatch {
   id?: string;
@@ -25,6 +25,7 @@ interface AllocationModalProps {
   memberName: string;
   month: Date;
   projects: Project[];
+  members: TeamMember[];
   initialAssignments?: Assignment[];
   onClose: () => void;
   onSave: (batch: AllocationBatch[]) => void;
@@ -32,11 +33,15 @@ interface AllocationModalProps {
   onHardDelete?: (id: string) => void;
   onAddProject?: () => void;
   onEditResource?: (memberId: string) => void;
+  onSwapMember?: (assignmentId: string, newMemberId: string) => void;
+  onUnassign?: (assignmentId: string) => void;
+  onSwapToNewJoiner?: (assignmentId: string) => void;
   privacyMode: boolean;
 }
 
-export default function AllocationModal({ memberId, memberName, month, projects, initialAssignments, onClose, onSave, onRemove, onHardDelete, onAddProject, onEditResource, privacyMode }: AllocationModalProps) {
+export default function AllocationModal({ memberId, memberName, month, projects, members, initialAssignments, onClose, onSave, onRemove, onHardDelete, onAddProject, onEditResource, onSwapMember, onUnassign, onSwapToNewJoiner, privacyMode }: AllocationModalProps) {
   const [batch, setBatch] = useState<AllocationBatch[]>([]);
+  const [swapTargets, setSwapTargets] = useState<Record<number, string>>({});
 
   useEffect(() => {
     if (initialAssignments && initialAssignments.length > 0) {
@@ -59,6 +64,39 @@ export default function AllocationModal({ memberId, memberName, month, projects,
       }]);
     }
   }, [initialAssignments, month, projects]);
+
+  useEffect(() => {
+    if (!initialAssignments) {
+      setSwapTargets({});
+      return;
+    }
+
+    const defaults: Record<number, string> = {};
+    initialAssignments.forEach((asg, index) => {
+      const firstOther = members.find(m => m.id !== memberId)?.id;
+      if (firstOther) {
+        defaults[index] = firstOther;
+      }
+    });
+    setSwapTargets(defaults);
+  }, [initialAssignments, members, memberId]);
+
+  const updateSwapTarget = (index: number, memberId: string) => {
+    setSwapTargets(prev => ({ ...prev, [index]: memberId }));
+  };
+
+  const shiftRowByWeeks = (index: number, weeks: number) => {
+    setBatch(prev => prev.map((row, i) => {
+      if (i !== index) return row;
+      try {
+        const newStart = format(addWeeks(parseISO(row.startDate), weeks), 'yyyy-MM-dd');
+        const newEnd = format(addWeeks(parseISO(row.endDate), weeks), 'yyyy-MM-dd');
+        return { ...row, startDate: newStart, endDate: newEnd };
+      } catch (e) {
+        return row;
+      }
+    }));
+  };
 
   const statuses: AssignmentStatus[] = ['Hard', 'Soft', 'Pending', 'Planned'];
 
@@ -143,6 +181,20 @@ export default function AllocationModal({ memberId, memberName, month, projects,
                     <div className="flex justify-between items-center">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select Project</label>
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => shiftRowByWeeks(index, -1)}
+                          className="text-[10px] font-bold px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          title="Shift allocation back 1 week"
+                        >
+                          -1w
+                        </button>
+                        <button
+                          onClick={() => shiftRowByWeeks(index, 1)}
+                          className="text-[10px] font-bold px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          title="Shift allocation forward 1 week"
+                        >
+                          +1w
+                        </button>
                         {row.id && (
                           <div className="flex items-center gap-2">
                              {onRemove && (
@@ -246,6 +298,73 @@ export default function AllocationModal({ memberId, memberName, month, projects,
                     />
                   </div>
                 </div>
+                {row.id && (
+                  <div className="text-[10px] text-slate-500 mt-2">Last updated: {initialAssignments && initialAssignments.find(a => a.id === row.id)?.lastUpdated ? format(new Date(initialAssignments.find(a => a.id === row.id)!.lastUpdated!), 'MMM d, yyyy HH:mm') : '—'}</div>
+                )}
+
+                {row.id && projects.find(p => p.id === row.projectId)?.upcoming && (
+                  <div className="p-4 bg-white border border-indigo-100 rounded-xl space-y-3">
+                    <div className="text-[10px] uppercase tracking-widest font-black text-indigo-600">Upcoming allocation</div>
+                    <p className="text-sm text-slate-700">Swap this allocation to another resource, leave it unassigned, or tag the work to a new joiner placeholder.</p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Swap to resource</label>
+                        <select
+                          value={swapTargets[index] ?? members.find(m => m.id !== memberId)?.id ?? ''}
+                          onChange={(e) => updateSwapTarget(index, e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        >
+                          {members.filter(m => m.id !== memberId).length === 0 ? (
+                            <option value="">No other resources available</option>
+                          ) : members.filter(m => m.id !== memberId).map(member => (
+                            <option key={member.id} value={member.id}>
+                              {member.name} {member.role ? `• ${member.role}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          disabled={!swapTargets[index]}
+                          onClick={() => {
+                            if (row.id && swapTargets[index]) {
+                              onSwapMember?.(row.id, swapTargets[index]);
+                              onClose();
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-indigo-600 text-white font-black rounded-lg hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 transition-colors"
+                        >
+                          Swap Resource
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (row.id) {
+                              onUnassign?.(row.id);
+                              onClose();
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-rose-50 text-rose-700 font-black rounded-lg border border-rose-100 hover:bg-rose-100 transition-colors"
+                        >
+                          Mark Unassigned
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (row.id) {
+                              onSwapToNewJoiner?.(row.id);
+                              onClose();
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-amber-50 text-amber-700 font-black rounded-lg border border-amber-100 hover:bg-amber-100 transition-colors"
+                        >
+                          Tag to New Joiner
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
 

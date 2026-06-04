@@ -40,6 +40,9 @@ interface ResourceGridProps {
   onAddAssignment: (memberId: string, projectId: string, hours: number, date: Date, mode: 'month' | 'week', status?: AssignmentStatus, startDate?: string, endDate?: string) => void;
   onEditAssignment: (id: string, updates: Partial<Assignment>) => void;
   onRemoveAssignmentEntirely: (id: string) => void;
+  onSwapAssignmentMember: (assignmentId: string, newMemberId: string) => void;
+  onUnassignAssignment: (assignmentId: string) => void;
+  onSwapAssignmentToNewJoiner: (assignmentId: string) => void;
   onAddProject: () => void;
   selectedTeamId: string | null;
   teams: Team[];
@@ -63,6 +66,9 @@ export default function ResourceGrid({
   onAddAssignment, 
   onEditAssignment,
   onRemoveAssignmentEntirely,
+  onSwapAssignmentMember,
+  onUnassignAssignment,
+  onSwapAssignmentToNewJoiner,
   onAddProject,
   selectedTeamId,
   teams,
@@ -262,6 +268,8 @@ export default function ResourceGrid({
       : null;
     
     const daysToBench = rollOffDate ? differenceInDays(rollOffDate, new Date()) : null;
+    const isPlaceholder = member.isPlaceholder;
+    const isFutureJoiner = member.isFutureJoiner || (member.companyStartDate ? isAfter(parseISO(member.companyStartDate), new Date()) : false);
     
     const getDaysToBenchColor = (days: number | null) => {
       if (days === null) return 'bg-slate-100 text-slate-400';
@@ -300,6 +308,12 @@ export default function ResourceGrid({
                 <p className={`text-[11px] font-black truncate leading-none ${member.lastWorkingDay ? 'text-rose-600' : 'text-slate-900'}`}>
                   {obfuscate(member.name, privacyMode)}
                 </p>
+                {isPlaceholder && (
+                  <span className="px-1 py-[0.5px] rounded-[2px] text-[7px] font-black bg-slate-200 text-slate-700 border border-slate-300 tracking-tighter uppercase shrink-0">Placeholder</span>
+                )}
+                {isFutureJoiner && !isPlaceholder && (
+                  <span className="px-1 py-[0.5px] rounded-[2px] text-[7px] font-black bg-indigo-100 text-indigo-700 border border-indigo-200 tracking-tighter uppercase shrink-0">Future joiner</span>
+                )}
                 {member.employmentType === 'contractor' && (
                   <span className="px-1 py-[0.5px] rounded-[2px] text-[7px] font-black bg-rose-100 text-rose-700 border border-rose-200 tracking-tighter uppercase shrink-0">C</span>
                 )}
@@ -308,6 +322,9 @@ export default function ResourceGrid({
                 )}
               </div>
               <p className="text-[9px] font-bold text-slate-500 truncate uppercase tracking-tighter hover:text-indigo-600 transition-colors leading-none mt-0.5">{member.role}</p>
+              {isFutureJoiner && member.companyStartDate && !isPlaceholder && (
+                <p className="text-[7px] font-black text-indigo-600 uppercase tracking-tighter mt-0.5">Starts {format(parseISO(member.companyStartDate), 'd MMM')}</p>
+              )}
               {member.lastWorkingDay && (
                 <p className="text-[7px] font-black text-rose-500 uppercase tracking-tighter mt-0.5">LWD: {format(parseISO(member.lastWorkingDay), 'd MMM')}</p>
               )}
@@ -384,6 +401,12 @@ export default function ResourceGrid({
                   const continuesLeft = prevPeriod ? getAssignmentsForPeriod(member.id, prevPeriod).some(pa => pa.id === a.id) : false;
                   const continuesRight = nextPeriod ? getAssignmentsForPeriod(member.id, nextPeriod).some(na => na.id === a.id) : false;
                   
+                  const highlightType = isPlaceholder && a.status === 'Planned'
+                    ? 'placeholder'
+                    : !isPlaceholder && isFutureJoiner && a.status === 'Planned'
+                      ? 'futureJoiner'
+                      : undefined;
+
                   return (
                     <AssignmentCard 
                       key={a.id} 
@@ -395,6 +418,7 @@ export default function ResourceGrid({
                       continuesRight={continuesRight}
                       draggable
                       privacyMode={privacyMode}
+                      highlightType={highlightType}
                       onDragStart={(e) => {
                         e.dataTransfer.setData('text/plain', '');
                         setDraggedAssignment(a.id);
@@ -706,6 +730,7 @@ export default function ResourceGrid({
           memberName={allocationModal.memberName}
           month={allocationModal.date}
           projects={projects}
+          members={members}
           initialAssignments={allocationModal.assignmentIds ? assignments.filter(a => allocationModal.assignmentIds!.includes(a.id)) : undefined}
           onClose={() => setAllocationModal(null)}
           onRemove={(id) => {
@@ -736,6 +761,9 @@ export default function ResourceGrid({
             const member = members.find(m => m.id === id);
             if (member) onEditMember(member);
           }}
+          onSwapMember={onSwapAssignmentMember}
+          onUnassign={onUnassignAssignment}
+          onSwapToNewJoiner={onSwapAssignmentToNewJoiner}
           privacyMode={privacyMode}
           onSave={(batch) => {
             batch.forEach(item => {
@@ -753,7 +781,7 @@ export default function ResourceGrid({
                   item.projectId, 
                   item.hours, 
                   allocationModal.date, 
-                  viewMode === 'monthly' ? 'month' : 'week', 
+                  viewMode === 'monthly' ? 'month' : 'week',
                   item.status,
                   item.startDate,
                   item.endDate

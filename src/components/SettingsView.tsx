@@ -37,6 +37,7 @@ interface SettingsViewProps {
   assignments: Assignment[];
   comments: Comment[];
   todos: Todo[];
+  user: { name: string; role: string; avatar: string };
   onImportAll: (data: {
     teams?: Team[];
     projectGroups?: ProjectGroup[];
@@ -45,6 +46,7 @@ interface SettingsViewProps {
     assignments?: Assignment[];
     comments?: Comment[];
     todos?: Todo[];
+    user?: { name: string; role: string; avatar: string };
   }) => void;
   onResetToDefault: () => void;
   onClearAll: () => void;
@@ -58,6 +60,7 @@ export default function SettingsView({
   assignments,
   comments,
   todos,
+  user,
   onImportAll,
   onResetToDefault,
   onClearAll
@@ -76,6 +79,7 @@ export default function SettingsView({
     assignments,
     comments,
     todos,
+    user,
     exportedAt: new Date().toISOString(),
     version: '1.2.0'
   };
@@ -130,7 +134,12 @@ export default function SettingsView({
         projects: Array.isArray(parsed.projects) ? parsed.projects : [],
         assignments: Array.isArray(parsed.assignments) ? parsed.assignments : [],
         comments: Array.isArray(parsed.comments) ? parsed.comments : [],
-        todos: Array.isArray(parsed.todos) ? parsed.todos : []
+        todos: Array.isArray(parsed.todos) ? parsed.todos : [],
+        user: parsed.user && typeof parsed.user === 'object' ? {
+          name: parsed.user.name || 'Admin',
+          role: parsed.user.role || 'Admin Account',
+          avatar: parsed.user.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin'
+        } : undefined
       };
 
       // Perform deep sanitization/verification of items to fit our data features format
@@ -165,7 +174,9 @@ export default function SettingsView({
           code: p.code || `PRJ-${idx + 100}`,
           pm: p.pm || undefined,
           pc: p.pc || undefined,
-          groupId: p.groupId || null
+          groupId: p.groupId || null,
+          upcoming: !!p.upcoming,
+          probability: typeof p.probability === 'number' ? p.probability : undefined
         };
       });
 
@@ -187,6 +198,7 @@ export default function SettingsView({
           endDate: a.endDate || '',
           hoursPerWeek: typeof a.hoursPerWeek === 'number' ? a.hoursPerWeek : 40,
           status: a.status || 'Planned'
+          ,lastUpdated: a.lastUpdated || new Date().toISOString()
         };
       });
 
@@ -294,6 +306,11 @@ export default function SettingsView({
       "parentId": "t0"
     }
   ],
+  "user": {
+    "name": "Admin User",
+    "role": "Admin Account",
+    "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Admin"
+  },
   "projectGroups": [
     {
       "id": "pg1",
@@ -330,6 +347,8 @@ export default function SettingsView({
       "code": "PRJ-PHX",
       "pm": "John Wick",
       "pc": "Winston-HQ",
+      "upcoming": false,
+      "probability": 100,
       "groupId": "pg1"
     }
   ],

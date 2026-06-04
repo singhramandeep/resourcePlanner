@@ -1,24 +1,38 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Plus, Trash2, Star } from 'lucide-react';
-import { TeamMember, Assignment, Team, Skill, SkillRating, EmploymentType } from '../types';
-import { MOCK_PROJECTS } from '../mockData';
+import { TeamMember, Assignment, Team, Skill, SkillRating, EmploymentType, Project } from '../types';
 
 interface AddResourceModalProps {
   onClose: () => void;
   onAddResource: (resource: TeamMember, initialAssignment?: Assignment) => void;
-  onBulkAdd: (membersData: {
-    name: string;
-    role: string;
-    gender: string;
-    employmentType: string;
-    skills: { name: string; rating: number }[];
-  }[]) => void;
+  onBulkAdd: (
+    membersData: {
+      name: string;
+      role: string;
+      gender: string;
+      employmentType: string;
+      skills: { name: string; rating: number }[];
+      isPlaceholder?: boolean;
+      isFutureJoiner?: boolean;
+    }[],
+    options?: {
+      assignProject: boolean;
+      projectId?: string;
+      startDate?: string;
+      endDate?: string;
+      hoursPerWeek?: number;
+      isPlaceholder?: boolean;
+      isFutureJoiner?: boolean;
+    }
+  ) => void;
   teams: Team[];
   teamMembers: TeamMember[];
+  projects: Project[];
+  defaultProjectId?: string;
 }
 
-export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, teams, teamMembers }: AddResourceModalProps) {
+export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, teams, teamMembers, projects, defaultProjectId }: AddResourceModalProps) {
   const [activeTab, setActiveTab] = useState<'single' | 'bulk'>('single');
   
   // Single Resource State
@@ -32,6 +46,8 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
   const [isManager, setIsManager] = useState(false);
   const [employmentType, setEmploymentType] = useState<EmploymentType>('employee');
   const [companyStartDate, setCompanyStartDate] = useState('');
+  const [isPlaceholder, setIsPlaceholder] = useState(false);
+  const [isFutureJoiner, setIsFutureJoiner] = useState(false);
 
   const existingRoles = useMemo(() => {
     return Array.from(new Set(teamMembers.map(m => m.role))).sort();
@@ -47,13 +63,60 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
   
   // Initial Project Assignment State
   const [assignProject, setAssignProject] = useState(false);
-  const [projectId, setProjectId] = useState(MOCK_PROJECTS[0]?.id || '');
+  const [projectId, setProjectId] = useState(defaultProjectId || projects[0]?.id || '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [hours, setHours] = useState(40);
-  
-  // Bulk State
+
+  // Bulk add state
   const [bulkNames, setBulkNames] = useState('');
+  const [bulkAssignProject, setBulkAssignProject] = useState(false);
+  const [bulkProjectId, setBulkProjectId] = useState(defaultProjectId || projects[0]?.id || '');
+  const [bulkStartDate, setBulkStartDate] = useState('');
+  const [bulkEndDate, setBulkEndDate] = useState('');
+  const [bulkHours, setBulkHours] = useState(40);
+  const [bulkMemberKind, setBulkMemberKind] = useState<'standard' | 'future' | 'placeholder'>('standard');
+  const bulkIsPlaceholder = bulkMemberKind === 'placeholder';
+  const bulkIsFutureJoiner = bulkMemberKind === 'future';
+
+  useEffect(() => {
+    if (defaultProjectId) {
+      setAssignProject(true);
+      setBulkAssignProject(true);
+    }
+  }, [defaultProjectId]);
+
+  useEffect(() => {
+    if (isPlaceholder) {
+      const upcomingProject = projects.find(p => p.upcoming);
+      if (upcomingProject) {
+        setProjectId(upcomingProject.id);
+      } else if (!projects.some(p => p.id === projectId)) {
+        setProjectId('');
+      }
+      return;
+    }
+
+    if (!projects.some(p => p.id === projectId)) {
+      setProjectId(projects[0]?.id || '');
+    }
+  }, [isPlaceholder, projects, projectId]);
+
+  useEffect(() => {
+    if (bulkIsPlaceholder) {
+      const upcomingProject = projects.find(p => p.upcoming);
+      if (upcomingProject) {
+        setBulkProjectId(upcomingProject.id);
+      } else if (!projects.some(p => p.id === bulkProjectId)) {
+        setBulkProjectId('');
+      }
+      return;
+    }
+
+    if (!projects.some(p => p.id === bulkProjectId)) {
+      setBulkProjectId(projects[0]?.id || '');
+    }
+  }, [bulkMemberKind, bulkProjectId, projects]);
 
   const handleAddSkill = () => {
     if (!newSkillName.trim()) return;
@@ -76,11 +139,12 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
   };
 
   const handleSingleSubmit = () => {
-    if (!name.trim()) return;
+    if (!name.trim() && !isPlaceholder) return;
     
+    const resourceName = name.trim() || 'Unidentified Resource';
     const newMember: TeamMember = {
       id: `m-${Date.now()}`,
-      name: name.trim(),
+      name: resourceName,
       role: role.trim() || 'Team Member',
       skills: skills,
       teamId,
@@ -88,8 +152,10 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
       isManager,
       companyStartDate: companyStartDate || undefined,
       capacity: 40,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
-      employmentType: employmentType
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resourceName)}`,
+      employmentType: employmentType,
+      isPlaceholder,
+      isFutureJoiner
     };
 
     let newAssignment: Assignment | undefined;
@@ -101,7 +167,8 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
         startDate,
         endDate,
         hoursPerWeek: hours,
-        status: 'Hard'
+        status: isPlaceholder || isFutureJoiner ? 'Planned' : 'Hard',
+        lastUpdated: new Date().toISOString()
       };
     }
 
@@ -114,7 +181,7 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
     
     const parsedData = lines.map(line => {
       const parts = line.split(',').map(p => p.trim());
-      const name = parts[0] || 'Unknown';
+      const name = parts[0] || 'Unidentified Resource';
       const role = parts[1] || 'Team Member';
       
       const genderRaw = (parts[2] || '').toLowerCase();
@@ -136,10 +203,26 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
         };
       }).filter(s => s.name) : [];
       
-      return { name, role, gender, employmentType, skills };
+      return {
+        name,
+        role,
+        gender,
+        employmentType,
+        skills,
+        isPlaceholder: bulkIsPlaceholder,
+        isFutureJoiner: bulkIsFutureJoiner
+      };
     });
 
-    onBulkAdd(parsedData);
+    onBulkAdd(parsedData, {
+      assignProject: bulkAssignProject,
+      projectId: bulkProjectId,
+      startDate: bulkStartDate,
+      endDate: bulkEndDate,
+      hoursPerWeek: bulkHours,
+      isPlaceholder: bulkIsPlaceholder,
+      isFutureJoiner: bulkIsFutureJoiner
+    });
   };
 
   return (
@@ -329,21 +412,7 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
                   </select>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Reports To (Manager)</label>
-                  <select 
-                    value={managerId}
-                    onChange={e => setManagerId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  >
-                    <option value="">No Manager</option>
-                    {teamMembers.filter(m => m.isManager).map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
                 <div className="flex items-end pb-1">
                   <label className="flex items-center gap-2 cursor-pointer group">
                     <div className={`w-10 h-6 rounded-full transition-colors relative ${isManager ? 'bg-indigo-600' : 'bg-slate-200'}`}>
@@ -358,7 +427,30 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tagged as Manager</span>
                   </label>
                 </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={isPlaceholder}
+                      onChange={e => setIsPlaceholder(e.target.checked)}
+                      className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                    />
+                    <span className="text-sm font-bold text-slate-700">Unidentified / placeholder resource</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={isFutureJoiner}
+                      onChange={e => setIsFutureJoiner(e.target.checked)}
+                      className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                    />
+                    <span className="text-sm font-bold text-slate-700">Future joiner</span>
+                  </label>
+                </div>
               </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Placeholder or future joiner allocations will be created as <span className="font-black uppercase">Planned</span>.
+              </p>
 
               <div className="pt-4 border-t border-slate-100">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -381,10 +473,15 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
                       onChange={e => setProjectId(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     >
-                      {MOCK_PROJECTS.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
+                      {projects
+                        .filter(p => !isPlaceholder || p.upcoming)
+                        .map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
                     </select>
+                    {isPlaceholder && projects.every(p => !p.upcoming) && (
+                      <p className="mt-2 text-xs text-rose-500">There are no upcoming projects available for placeholder resources.</p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -420,6 +517,112 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
             </div>
           ) : (
             <div className="space-y-4">
+              <div className="grid gap-3">
+                <div className="flex flex-col gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={bulkAssignProject}
+                      onChange={e => setBulkAssignProject(e.target.checked)}
+                      className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                    />
+                    <span className="text-sm font-semibold text-slate-700">Assign all bulk resources to a project</span>
+                  </label>
+
+                  <div className={bulkAssignProject ? 'grid grid-cols-1 gap-4 md:grid-cols-2' : 'hidden'}>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</label>
+                      <select
+                        value={bulkProjectId}
+                        onChange={e => setBulkProjectId(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      >
+                        {projects
+                          .filter(p => !bulkIsPlaceholder || p.upcoming)
+                          .map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                      </select>
+                      {bulkIsPlaceholder && projects.every(p => !p.upcoming) && (
+                        <p className="mt-2 text-xs text-rose-500">Placeholder resources can only be assigned to upcoming projects.</p>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Start Date</label>
+                        <input
+                          type="date"
+                          value={bulkStartDate}
+                          onChange={e => setBulkStartDate(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">End Date</label>
+                        <input
+                          type="date"
+                          value={bulkEndDate}
+                          onChange={e => setBulkEndDate(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Hours Per Week</label>
+                      <input
+                        type="number"
+                        value={bulkHours}
+                        onChange={e => setBulkHours(parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold text-slate-700">Bulk member type</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${bulkMemberKind === 'standard' ? 'border-indigo-500 bg-indigo-50 text-slate-900' : 'border-slate-200 bg-white text-slate-700'} cursor-pointer`}>
+                        <input
+                          type="radio"
+                          name="bulk-member-type"
+                          value="standard"
+                          checked={bulkMemberKind === 'standard'}
+                          onChange={() => setBulkMemberKind('standard')}
+                          className="h-4 w-4 text-indigo-600 border-slate-300"
+                        />
+                        <span>Standard resources</span>
+                      </label>
+                      <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${bulkMemberKind === 'future' ? 'border-indigo-500 bg-indigo-50 text-slate-900' : 'border-slate-200 bg-white text-slate-700'} cursor-pointer`}>
+                        <input
+                          type="radio"
+                          name="bulk-member-type"
+                          value="future"
+                          checked={bulkMemberKind === 'future'}
+                          onChange={() => setBulkMemberKind('future')}
+                          className="h-4 w-4 text-indigo-600 border-slate-300"
+                        />
+                        <span>New joinees / future joiners</span>
+                      </label>
+                      <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${bulkMemberKind === 'placeholder' ? 'border-indigo-500 bg-indigo-50 text-slate-900' : 'border-slate-200 bg-white text-slate-700'} cursor-pointer`}>
+                        <input
+                          type="radio"
+                          name="bulk-member-type"
+                          value="placeholder"
+                          checked={bulkMemberKind === 'placeholder'}
+                          onChange={() => setBulkMemberKind('placeholder')}
+                          className="h-4 w-4 text-indigo-600 border-slate-300"
+                        />
+                        <span>Unknown / placeholder resources</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-500">
+                    When assigned, future joiner and placeholder allocations are created as <span className="font-black uppercase">Planned</span>.
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <p className="text-sm font-medium text-slate-500 leading-relaxed">
                   Enter one resource per line using the comma-separated format below. Only name is required.
@@ -448,7 +651,9 @@ export default function AddResourceModal({ onClose, onAddResource, onBulkAdd, te
           </button>
           <button 
             onClick={activeTab === 'single' ? handleSingleSubmit : handleBulkSubmit}
-            disabled={activeTab === 'single' ? !name.trim() || (assignProject && (!projectId || !startDate || !endDate)) : !bulkNames.trim()}
+            disabled={activeTab === 'single'
+              ? (!name.trim() && !isPlaceholder) || (assignProject && (!projectId || !startDate || !endDate))
+              : !bulkNames.trim() || (bulkAssignProject && (!bulkProjectId || !bulkStartDate || !bulkEndDate))}
             className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-sm font-bold text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             <Check className="w-4 h-4" />

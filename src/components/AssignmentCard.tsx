@@ -27,14 +27,31 @@ interface AssignmentCardProps {
   onExtendEnd?: (id: string) => void;
   draggable?: boolean;
   privacyMode?: boolean;
+  highlightType?: 'placeholder' | 'futureJoiner';
 }
 
-export default function AssignmentCard({ assignment, projectColor, compact, continuesLeft, continuesRight, onContextMenu, onClick, onDragStart, onDragEnter, onDragEnd, onExtendStart, onExtendEnd, draggable, projects = [], privacyMode = false }: AssignmentCardProps) {
+export default function AssignmentCard({ assignment, projectColor, compact, continuesLeft, continuesRight, onContextMenu, onClick, onDragStart, onDragEnter, onDragEnd, onExtendStart, onExtendEnd, draggable, projects = [], privacyMode = false, highlightType }: AssignmentCardProps) {
   const standardCapacity = 40;
   const contributionPercent = Math.round((assignment.hoursPerWeek / standardCapacity) * 100);
   const project = projects.find(p => p.id === assignment.projectId);
 
-  const getStatusStyles = (status: string) => {
+  const getStatusStyles = (status: string, highlightType?: 'placeholder' | 'futureJoiner') => {
+    if (status === 'Planned' && highlightType === 'placeholder') {
+      return {
+        bg: '#f97316',
+        text: 'white',
+        border: '#c2410c',
+        pattern: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.16), rgba(255,255,255,0.16) 5px, transparent 5px, transparent 10px)'
+      };
+    }
+    if (status === 'Planned' && highlightType === 'futureJoiner') {
+      return {
+        bg: '#38bdf8',
+        text: 'white',
+        border: '#0ea5e9',
+        pattern: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.16), rgba(255,255,255,0.16) 5px, transparent 5px, transparent 10px)'
+      };
+    }
     switch (status) {
       case 'Hard':
         return { 
@@ -69,11 +86,20 @@ export default function AssignmentCard({ assignment, projectColor, compact, cont
     }
   };
 
-  const statusStyles = getStatusStyles(assignment.status);
+  const statusStyles = getStatusStyles(assignment.status, highlightType);
 
   const formatDate = (dateStr: string) => {
     try {
       return format(parseISO(dateStr), 'MMM d');
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  const formatUpdated = (dateStr?: string) => {
+    if (!dateStr) return null;
+    try {
+      return format(parseISO(dateStr), 'MMM d, HH:mm');
     } catch (e) {
       return dateStr;
     }
@@ -186,6 +212,12 @@ export default function AssignmentCard({ assignment, projectColor, compact, cont
             {formatDate(assignment.startDate)} - {formatDate(assignment.endDate)}
           </span>
         </div>
+        {assignment.lastUpdated && (
+          <div className="flex items-center gap-1 text-[9px] text-white/80 pointer-events-none">
+            <Clock className="w-3 h-3" />
+            <span className="text-[9px] font-semibold">{formatUpdated(assignment.lastUpdated)}</span>
+          </div>
+        )}
       </div>
     </motion.div>
   );

@@ -32,6 +32,8 @@ export interface TeamMember {
   employmentType?: EmploymentType;
   managerId?: string;
   isManager?: boolean;
+  isPlaceholder?: boolean;
+  isFutureJoiner?: boolean;
 }
 
 export type ProjectType = 'T&M' | 'Fixed Bid' | 'Milestone based' | 'Other';
@@ -53,6 +55,8 @@ export interface Project {
   pm?: string;
   pc?: string;
   groupId?: string | null;
+  upcoming?: boolean;
+  probability?: number; // 0-100 percent chance
 }
 
 export type AssignmentStatus = 'Hard' | 'Soft' | 'Pending' | 'Planned';
@@ -92,6 +96,7 @@ export interface Assignment {
   endDate: string;
   hoursPerWeek: number;
   status: AssignmentStatus;
+  lastUpdated?: string; // ISO timestamp of last change to this allocation
 }
 
-export type ViewType = 'Dashboard' | 'Grid' | 'Team' | 'Projects' | 'Bench' | 'Org' | 'Tasks' | 'Settings' | 'Contractors' | 'Interns' | 'Forecast';
+export type ViewType = 'Dashboard' | 'Grid' | 'Team' | 'Projects' | 'Bench' | 'Org' | 'Tasks' | 'Settings' | 'Contractors' | 'Interns' | 'Forecast' | 'Unassigned' | 'Contingent' | 'UpcomingDemand';

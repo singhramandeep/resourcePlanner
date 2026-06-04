@@ -42,7 +42,8 @@ export const MOCK_PROJECTS: Project[] = [
   { id: 'p2', name: 'Solar Horizon', client: 'EcoSolutions', color: '#0891B2', startDate: '2025-06-01', endDate: '2026-06-30', type: 'T&M', code: 'SOL-HOR', pm: 'Sherlock Holmes', pc: 'Watson', groupId: 'pg1' },
   { id: 'p3', name: 'Quantum Ledger', client: 'Future Finance', color: '#059669', startDate: '2026-01-01', endDate: '2026-09-30', type: 'Milestone based', code: 'QUA-LED', pm: 'Tony Stark', pc: 'Jarvis', groupId: 'pg1' },
   { id: 'p4', name: 'Nebula App', client: 'Starlight Tech', color: '#7C3AED', startDate: '2025-11-01', endDate: '2027-06-30', type: 'Other', code: 'NEB-APP', pm: 'Bruce Wayne', pc: 'Alfred' },
-  { id: 'p5', name: 'Internal Audit', client: 'Corporate', color: '#64748B', startDate: '2026-03-01', endDate: '2026-11-30', type: 'T&M', code: 'INT-AUD', pm: 'Clark Kent', pc: 'Lois Lane', groupId: 'pg2' },
+  { id: 'p5', name: 'Internal Audit', client: 'Corporate', color: '#64748B', startDate: '2026-03-01', endDate: '2026-11-30', type: 'T&M', code: 'INT-AUD', pm: 'Clark Kent', pc: 'Lois Lane', groupId: 'pg2', upcoming: true, probability: 60 },
+  { id: 'p6', name: 'Quantum Ledger (Preview)', client: 'Future Finance', color: '#059669', startDate: '2026-10-01', endDate: '2027-03-30', type: 'Milestone based', code: 'QUA-LED-PRV', pm: 'Tony Stark', pc: 'Jarvis', groupId: null, upcoming: true, probability: 30 },
 ];
 
 export const MOCK_ASSIGNMENTS: Assignment[] = [

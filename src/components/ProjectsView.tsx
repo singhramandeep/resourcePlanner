@@ -26,7 +26,7 @@ import {
   isSameMonth,
   isSameWeek
 } from 'date-fns';
-import { Briefcase, Calendar, Users, ChevronLeft, ChevronRight, Info, Trash2, ArrowUp, ArrowDown, Edit2, FolderPlus, X, Filter, ArrowRight } from 'lucide-react';
+import { Briefcase, Calendar, Users, ChevronLeft, ChevronRight, Info, Trash2, ArrowUp, ArrowDown, Edit2, FolderPlus, X, Filter, ArrowRight, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AllocationModal from './AllocationModal';
 import { obfuscate } from '../lib/utils';
@@ -52,7 +52,11 @@ interface ProjectsViewProps {
   onBulkUpdateAssignments?: (ids: string[], updates: Partial<Assignment>) => void;
   onDeleteAssignment: (id: string, date: Date, mode: 'month' | 'week') => void;
   onRemoveAssignmentEntirely: (id: string) => void;
+  onSwapAssignmentMember: (assignmentId: string, newMemberId: string) => void;
+  onUnassignAssignment: (assignmentId: string) => void;
+  onSwapAssignmentToNewJoiner: (assignmentId: string) => void;
   onAddProject: () => void;
+  onOpenAddResourceModal: (projectId?: string) => void;
   onEditMember: (member: TeamMember) => void;
   privacyMode: boolean;
   searchQuery: string;
@@ -81,7 +85,11 @@ export default function ProjectsView({
   onBulkUpdateAssignments,
   onDeleteAssignment,
   onRemoveAssignmentEntirely,
+  onSwapAssignmentMember,
+  onUnassignAssignment,
+  onSwapAssignmentToNewJoiner,
   onAddProject,
+  onOpenAddResourceModal,
   onEditMember,
   privacyMode,
   searchQuery
@@ -235,12 +243,20 @@ export default function ProjectsView({
     projectGroups.forEach(g => {
       groups[g.id] = { ...g, projects: [] };
     });
+    // Upcoming projects group
+    const upcomingId = 'upcoming';
+    groups[upcomingId] = { id: upcomingId, name: 'Upcoming Projects', projects: [] };
     
     // Unassigned group
     const unassignedId = 'unassigned';
     groups[unassignedId] = { id: unassignedId, name: 'Unassigned', projects: [] };
 
     list.forEach(p => {
+      if (p.upcoming) {
+        groups[upcomingId].projects.push(p);
+        return;
+      }
+
       const gId = p.groupId || unassignedId;
       if (groups[gId]) {
         groups[gId].projects.push(p);
@@ -394,7 +410,7 @@ export default function ProjectsView({
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -10 }}
-                    className="flex items-center gap-2"
+                    className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <input 
                       autoFocus
@@ -580,7 +596,13 @@ export default function ProjectsView({
                     className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
                   />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <button
+                      onClick={() => onOpenAddResourceModal(showBulkAddMembers || undefined)}
+                      className="px-3 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all"
+                    >
+                      Add new joinee / placeholder
+                    </button>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mr-1">Show:</span>
                   {(['employee', 'contractor', 'intern'] as EmploymentType[]).map(type => (
                     <button
@@ -695,6 +717,7 @@ export default function ProjectsView({
           memberName={allocationModal.memberName}
           month={allocationModal.date}
           projects={projects}
+          members={members}
           initialAssignments={allocationModal.assignmentIds ? assignments.filter(a => allocationModal.assignmentIds!.includes(a.id)) : undefined}
           onClose={() => setAllocationModal(null)}
           onRemove={(id) => {
@@ -724,6 +747,9 @@ export default function ProjectsView({
             const member = members.find(m => m.id === id);
             if (member) onEditMember(member);
           }}
+          onSwapMember={onSwapAssignmentMember}
+          onUnassign={onUnassignAssignment}
+          onSwapToNewJoiner={onSwapAssignmentToNewJoiner}
           privacyMode={privacyMode}
           onSave={(batch) => {
             batch.forEach(item => {
@@ -883,6 +909,11 @@ const ProjectRow = React.memo(({
                 <h3 className="text-sm font-black text-slate-900 truncate leading-tight group-hover/name:text-indigo-600 transition-colors uppercase tracking-tight">
                   {obfuscate(project.name, privacyMode)}
                 </h3>
+                  {project.upcoming && (
+                    <span className="text-[10px] font-black px-2 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-100 uppercase tracking-tighter">
+                      Upcoming{typeof project.probability === 'number' ? ` • ${project.probability}%` : ''}
+                    </span>
+                  )}
                 {project.code && !collapsedMetadata && (
                   <span className="text-[9px] font-black px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded border border-slate-200 uppercase tracking-tighter shrink-0">
                     {obfuscate(project.code, privacyMode)}
@@ -1124,6 +1155,12 @@ const ProjectRow = React.memo(({
                               </span>
                             )}
                           </div>
+                            {res.lastUpdated && (
+                              <div className="text-[9px] text-slate-700 mt-1 opacity-80 pointer-events-none flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span>{format(parseISO(res.lastUpdated), 'MMM d, HH:mm')}</span>
+                              </div>
+                            )}
                         </motion.div>
                       );
                     })}

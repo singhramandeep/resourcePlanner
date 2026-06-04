@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Plus, Trash2, Camera, UploadCloud, Star } from 'lucide-react';
 import { TeamMember, Team, SkillRating, EmploymentType, Comment, Todo, Project } from '../types';
+import { Assignment } from '../types';
 import Cropper from 'react-easy-crop';
 import getCroppedImg from '../lib/cropImage';
 import CommentHistory from './CommentHistory';
@@ -18,6 +19,7 @@ interface EditResourceModalProps {
   onAddComment: (comment: Omit<Comment, 'id' | 'createdAt' | 'authorId' | 'authorName'>) => Comment;
   onAddTodo: (todo: Omit<Todo, 'id' | 'createdAt'>) => Todo;
   projects: Project[];
+  assignments?: Assignment[];
   privacyMode: boolean;
 }
 
@@ -32,6 +34,7 @@ export default function EditResourceModal({
   onAddComment,
   onAddTodo,
   projects,
+  assignments,
   privacyMode
 }: EditResourceModalProps) {
   const [name, setName] = useState(resource.name);
@@ -167,6 +170,13 @@ export default function EditResourceModal({
   const handleRemoveReport = (memberId: string) => {
     onUpdate(memberId, { managerId: undefined });
   };
+
+  const memberAssignments = useMemo(() => {
+    return (assignments || []).filter(a => a.memberId === resource.id).map(a => ({
+      ...a,
+      projectName: projects.find(p => p.id === a.projectId)?.name || a.projectId
+    }));
+  }, [assignments, resource.id, projects]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onPaste={handlePaste}>
@@ -397,6 +407,25 @@ export default function EditResourceModal({
 
                 <div className="space-y-4 pt-6 border-t border-slate-100">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Skill Inventory</label>
+                  <div className="mt-6">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Allocations</label>
+                    <div className="space-y-2">
+                      {memberAssignments.length === 0 && (
+                        <div className="text-[10px] text-slate-500">No allocations found for this resource.</div>
+                      )}
+                      {memberAssignments.map(a => (
+                        <div key={a.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                          <div>
+                            <div className="text-sm font-black text-slate-800">{a.projectName}</div>
+                            <div className="text-[10px] text-slate-500">{a.startDate} → {a.endDate}</div>
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            Last updated: {a.lastUpdated ? new Date(a.lastUpdated).toLocaleString() : '—'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   
                   <div className="flex items-end gap-3">
                     <div className="flex-1">

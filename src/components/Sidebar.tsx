@@ -18,6 +18,7 @@ import {
   Trash2,
   Edit2,
   Folder,
+  FolderPlus,
   PanelLeftClose,
   PanelLeftOpen,
   GitGraph,
@@ -25,7 +26,8 @@ import {
   BarChart3,
   TrendingUp,
   UserCheck,
-  GraduationCap
+  GraduationCap,
+  AlertCircle
 } from 'lucide-react';
 import { ViewType, Team, Project, ProjectGroup } from '../types';
 import { useState } from 'react';
@@ -134,6 +136,9 @@ export default function Sidebar({
 
   const reportItems = [
     { id: 'Bench', icon: UserMinus, label: 'Bench View' },
+    { id: 'Unassigned', icon: AlertCircle, label: 'Unassigned Roles' },
+    { id: 'Contingent', icon: Users, label: 'Interns & Contractors' },
+    { id: 'UpcomingDemand', icon: FolderPlus, label: 'Upcoming Demand' },
     { id: 'Contractors', icon: UserCheck, label: 'Contractors' },
     { id: 'Interns', icon: GraduationCap, label: 'Interns' },
     { id: 'Forecast', icon: TrendingUp, label: 'Resource Forecast' },
@@ -196,10 +201,45 @@ export default function Sidebar({
   };
 
   const renderProjectHierarchy = () => {
-    const ungroupedProjects = projects.filter(p => !p.groupId);
+    const upcomingProjects = projects.filter(p => p.upcoming);
+    const ungroupedProjects = projects.filter(p => !p.groupId && !p.upcoming);
     
     return (
       <div className="space-y-1 mt-1">
+        {upcomingProjects.length > 0 && (
+          <div className="mb-1">
+            <div className="px-3 py-1 text-[10px] uppercase font-bold text-amber-600">Upcoming</div>
+            {upcomingProjects.map(project => (
+              <button
+                key={`up-${project.id}`}
+                onClick={() => {
+                  setCurrentView('Projects');
+                  setSelectedProjectId(project.id);
+                  setSelectedProjectGroupId(null);
+                  setSelectedTeamId(null);
+                  setSearchQuery('');
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  currentView === 'Projects' && selectedProjectId === project.id
+                    ? 'text-amber-700 bg-amber-50/40'
+                    : 'text-amber-600 hover:bg-amber-50/10'
+                }`}
+                style={{ paddingLeft: isCollapsed ? '12px' : '24px' }}
+              >
+                <Circle className={`w-1.5 h-1.5 shrink-0 ${currentView === 'Projects' && selectedProjectId === project.id ? 'fill-amber-500 text-amber-500' : 'text-amber-300'}`} />
+                {!isCollapsed && (
+                  <span className="truncate flex items-center gap-2">
+                    <span>{project.name}</span>
+                    {typeof project.probability === 'number' && (
+                      <span className="text-[10px] font-semibold text-amber-600 bg-amber-100 px-1 rounded">{project.probability}%</span>
+                    )}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
         {ungroupedProjects.map(project => (
           <button
             key={project.id}

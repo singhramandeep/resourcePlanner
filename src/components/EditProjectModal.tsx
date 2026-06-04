@@ -42,6 +42,8 @@ export default function EditProjectModal({
   const [pm, setPm] = useState(project.pm || '');
   const [pc, setPc] = useState(project.pc || '');
   const [groupId, setGroupId] = useState(project.groupId || '');
+  const [upcoming, setUpcoming] = useState<boolean>(!!project.upcoming);
+  const [probability, setProbability] = useState<number>(project.probability ?? 50);
 
   const handleSubmit = () => {
     if (!name.trim()) return;
@@ -56,7 +58,9 @@ export default function EditProjectModal({
       code: code.trim(),
       pm: pm.trim(),
       pc: pc.trim(),
-      groupId: groupId || null
+      groupId: groupId || null,
+      upcoming: upcoming || undefined,
+      probability: upcoming ? probability : undefined
     });
 
     onClose();
@@ -180,6 +184,21 @@ export default function EditProjectModal({
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={upcoming} onChange={e => setUpcoming(e.target.checked)} className="w-4 h-4" />
+                  <span className="text-sm font-black">Upcoming (not signed)</span>
+                </label>
+
+                {upcoming && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Probability</label>
+                    <input type="number" min={0} max={100} value={probability} onChange={e => setProbability(Number(e.target.value))} className="w-20 px-2 py-1 bg-slate-50 border border-slate-200 rounded" />
+                    <span className="text-xs text-slate-500">%</span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-6">

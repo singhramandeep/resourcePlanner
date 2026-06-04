@@ -24,6 +24,8 @@ export default function AddProjectModal({ onClose, onAddProject, onBulkAdd, proj
   const [pm, setPm] = useState('');
   const [pc, setPc] = useState('');
   const [groupId, setGroupId] = useState('');
+  const [upcoming, setUpcoming] = useState(false);
+  const [probability, setProbability] = useState<number>(50);
   
   // Bulk State
   const [bulkNames, setBulkNames] = useState('');
@@ -42,7 +44,9 @@ export default function AddProjectModal({ onClose, onAddProject, onBulkAdd, proj
       code: code.trim(),
       pm: pm.trim(),
       pc: pc.trim(),
-      groupId: groupId || null
+      groupId: groupId || null,
+      upcoming: upcoming || undefined,
+      probability: upcoming ? probability : undefined
     };
 
     onAddProject(newProject);
@@ -197,6 +201,21 @@ export default function AddProjectModal({ onClose, onAddProject, onBulkAdd, proj
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={upcoming} onChange={e => setUpcoming(e.target.checked)} className="w-4 h-4" />
+                  <span className="text-sm font-semibold text-slate-700">Mark as upcoming (not signed)</span>
+                </label>
+
+                {upcoming && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Probability</label>
+                    <input type="number" min={0} max={100} value={probability} onChange={e => setProbability(Number(e.target.value))} className="w-20 px-2 py-1 bg-slate-50 border border-slate-200 rounded" />
+                    <span className="text-xs text-slate-500">%</span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
